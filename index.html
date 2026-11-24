@@ -80,7 +80,7 @@ label.ck input{width:22px;height:22px;accent-color:var(--acc)}
       <summary>Réglages</summary>
       <div class="row">
         <span>Champ de vision de la caméra : <b id="fovv"></b></span>
-        <input id="fov" type="range" min="45" max="90" step="1">
+        <input id="fov" type="range" min="45" max="90" step="0.5">
         <small>Si les raccords sont décalés ou les objets répétés, ajuste cette valeur. Tu peux aussi la changer après coup et réassembler.</small>
       </div>
       <div class="row">
@@ -124,8 +124,9 @@ label.ck input{width:22px;height:22px;accent-color:var(--acc)}
   <div id="toast"></div>
   <div id="panel">
     <div>Champ de vision : <b id="fov2v"></b></div>
-    <input id="fov2" type="range" min="45" max="90" step="1">
-    <small style="color:var(--mute)">Augmente si les objets apparaissent en double, diminue s'il manque des bouts entre deux photos.</small>
+    <input id="fov2" type="range" min="45" max="90" step="0.5">
+    <label class="ck"><input id="auto" type="checkbox"> Calibrage automatique (recommandé)</label>
+    <small style="color:var(--mute)">Le calibrage automatique cherche le meilleur réglage à partir de tes photos. Décoche-le pour imposer la valeur ci-dessus.</small>
     <div style="margin-top:10px"><button id="restitch" class="main">Réassembler</button></div>
   </div>
   <div class="bar bot">
@@ -291,13 +292,13 @@ function frame(t){
       oc.save();oc.translate(ax,ay);oc.rotate(an);oc.beginPath();oc.moveTo(18*dpr,0);oc.lineTo(-10*dpr,-13*dpr);oc.lineTo(-10*dpr,13*dpr);oc.closePath();oc.fillStyle='#4f8cff';oc.fill();oc.restore();
     }}
   // réticule + déclenchement
-  const ok=cand&&cang<3&&speed<6&&t>cool;
+  const ok=cand&&cang<3&&speed<4&&t>cool;
   hold=ok?hold+dt:0;
   oc.beginPath();oc.arc(W/2,H/2,30*dpr,0,7);oc.strokeStyle=cang<3?'#4f8cff':'#fff';oc.lineWidth=3*dpr;oc.stroke();
-  if(hold>0){oc.beginPath();oc.arc(W/2,H/2,30*dpr,-Math.PI/2,-Math.PI/2+Math.min(1,hold/400)*Math.PI*2);oc.strokeStyle='#3ddc97';oc.lineWidth=6*dpr;oc.stroke()}
-  if(hold>=400){capture(cand,o);hold=0;cool=t+700}
+  if(hold>0){oc.beginPath();oc.arc(W/2,H/2,30*dpr,-Math.PI/2,-Math.PI/2+Math.min(1,hold/550)*Math.PI*2);oc.strokeStyle='#3ddc97';oc.lineWidth=6*dpr;oc.stroke()}
+  if(hold>=550){capture(cand,o);hold=0;cool=t+700}
   const left=targets.filter(x=>!x.done).length;
-  $('hintt').textContent=!left?'Sphère complète ! Appuie sur Terminer.':cang<3?(speed<6?'Ne bouge plus…':'Stabilise le téléphone'):cang<12?'Centre le point dans le cercle':'Suis la flèche bleue';
+  $('hintt').textContent=!left?'Sphère complète ! Appuie sur Terminer.':cang<3?(speed<4?'Ne bouge plus…':'Stabilise le téléphone'):cang<12?'Centre le point dans le cercle':'Suis la flèche bleue';
 }
 function capture(tg,o){
   const vw=video.videoWidth,vh=video.videoHeight,k=Math.min(1,CAPL/Math.max(vw,vh));
@@ -401,16 +402,76 @@ function solveGains(lows,n){
     for(let r=0;r<n;r++){if(r===c)continue;const m=A[r][c]/d;if(!m)continue;for(let k=c;k<n;k++)A[r][k]-=m*A[c][k];bv[r]-=m*bv[c]}}
   return Array.from({length:n},(_,i)=>{const g=bv[i]/(A[i][i]||1);return isFinite(g)?Math.min(2,Math.max(.5,g)):1});
 }
+/* ---------- alignement automatique (corrélation entre photos voisines) ---------- */
+async function grayAt(blob,L){
+  const bm=await createImageBitmap(blob),k=L/Math.max(bm.width,bm.height);
+  const w=Math.round(bm.width*k),h=Math.round(bm.height*k),c=document.createElement('canvas');c.width=w;c.height=h;
+  const x=c.getContext('2d',{willReadFrequently:true});x.filter='blur(1px)';x.drawImage(bm,0,0,w,h);bm.close&&bm.close();
+  const d=x.getImageData(0,0,w,h).data,g=new Float32Array(w*h);
+  for(let i=0,q=0;i<w*h;i++,q+=4)g[i]=.299*d[q]+.587*d[q+1]+.114*d[q+2];
+  return {g,w,h};
+}
+function rotAxis(v,a,t){const c=Math.cos(t),s=Math.sin(t),k=dot(a,v);
+  return [v[0]*c+(a[1]*v[2]-a[2]*v[1])*s+a[0]*k*(1-c),v[1]*c+(a[2]*v[0]-a[0]*v[2])*s+a[1]*k*(1-c),v[2]*c+(a[0]*v[1]-a[1]*v[0])*s+a[2]*k*(1-c)]}
+function ortho(c){const n=v=>{const l=Math.hypot(...v);return v.map(x=>x/l)};c.f=n(c.f);let r=c.r.map((x,i)=>x-dot(c.r,c.f)*c.f[i]);c.r=n(r);
+  c.u=[c.r[1]*c.f[2]-c.r[2]*c.f[1],c.r[2]*c.f[0]-c.r[0]*c.f[2],c.r[0]*c.f[1]-c.r[1]*c.f[0]]}
+async function refine(cams,setP){
+  const n=cams.length;if(n<2)return S.fov;
+  let fov=S.fov;
+  const levels=[{L:160,steps:[2,1,.5],fr:[-10,10,1]},{L:320,steps:[.4,.2,.1],fr:[-1.5,1.5,.5]}];
+  for(let li=0;li<levels.length;li++){
+    const lv=levels[li];
+    for(let i=0;i<n;i++){cams[i].im=await grayAt(shots[i].blob,lv.L);setP(li*.1+.05*(i+1)/n,'Alignement des photos…');if(i%5==4)await tick()}
+    const mk=()=>{for(const c of cams){const {w,h}=c.im,fp=(Math.max(w,h)/2)/Math.tan(fov/2*D),st=Math.max(3,Math.round(w/40)),m=st;c.lfp=fp;c.pts=[];
+      for(let y=m;y<h-m;y+=st)for(let x=m;x<w-m;x+=st)c.pts.push((x+.5-w/2)/fp,-(y+.5-h/2)/fp,c.im.g[y*w+x])}};
+    const nb=cams.map((c,i)=>cams.map((d,j)=>j).filter(j=>j!==i&&dot(c.f,cams[j].f)>Math.cos(fov*1.05*D)));
+    const pair=(a,b)=>{const P=a.pts,{g,w,h}=b.im,fp=b.lfp,cx=w/2,cy=h/2;let sx=0,sy=0,sxx=0,syy=0,sxy=0,cnt=0;
+      for(let k=0;k<P.length;k+=3){const x=P[k],y=P[k+1];
+        const dx=a.r[0]*x+a.u[0]*y+a.f[0],dy=a.r[1]*x+a.u[1]*y+a.f[1],dz=a.r[2]*x+a.u[2]*y+a.f[2];
+        const zc=dx*b.f[0]+dy*b.f[1]+dz*b.f[2];if(zc<=.1)continue;
+        const px=cx+fp*(dx*b.r[0]+dy*b.r[1]+dz*b.r[2])/zc-.5,py=cy-fp*(dx*b.u[0]+dy*b.u[1]+dz*b.u[2])/zc-.5;
+        if(px<1||py<1||px>=w-2||py>=h-2)continue;
+        const ix=px|0,iy=py|0,fx=px-ix,fy=py-iy,o=iy*w+ix;
+        const v=g[o]*(1-fx)*(1-fy)+g[o+1]*fx*(1-fy)+g[o+w]*(1-fx)*fy+g[o+w+1]*fx*fy,u=P[k+2];
+        sx+=u;sy+=v;sxx+=u*u;syy+=v*v;sxy+=u*v;cnt++}
+      if(cnt<30)return null;const vx=sxx-sx*sx/cnt,vy=syy-sy*sy/cnt;if(vx<1e-3||vy<1e-3)return null;
+      return {e:1-(sxy-sx*sy/cnt)/Math.sqrt(vx*vy),n:cnt}};
+    const costI=i=>{let e=0,m=0;for(const j of nb[i]){const p=pair(cams[i],cams[j]);if(p){e+=p.e*p.n;m+=p.n}
+      const q=pair(cams[j],cams[i]);if(q){e+=q.e*q.n;m+=q.n}}return m?e/m:1};
+    const total=()=>{let e=0;for(let i=0;i<n;i++)e+=costI(i);return e/n};
+    // 1) champ de vision
+    if(S.autoFov!==false){let best=fov,be=9;const f0=fov;
+      for(let f=f0+lv.fr[0];f<=f0+lv.fr[1]+1e-6;f+=lv.fr[2]){if(f<40||f>100)continue;fov=f;mk();const e=total();if(e<be){be=e;best=f}}
+      fov=best;await tick()}
+    mk();
+    // 2) rotation de chaque photo (la 1re reste fixe)
+    let done=0;const tot=lv.steps.length*2*(n-1);
+    for(const st of lv.steps)for(let it=0;it<2;it++){
+      for(let i=1;i<n;i++){const c=cams[i];let cur=costI(i);
+        for(const ax of ['r','u','f'])for(const sg of [1,-1]){
+          const a=c[ax].slice(),old={r:c.r,u:c.u,f:c.f},t=sg*st*D;
+          c.r=rotAxis(c.r,a,t);c.u=rotAxis(c.u,a,t);c.f=rotAxis(c.f,a,t);
+          const e=costI(i);if(e<cur-1e-5){cur=e}else{c.r=old.r;c.u=old.u;c.f=old.f}}
+        ortho(c);done++;if(done%8==0){setP(li*.1+.05+.05*done/tot);await tick()}}
+    }
+    for(const c of cams){c.im=null;c.pts=null}
+  }
+  return fov;
+}
+
 async function stitch(){
   show('work');const P=$('prog'),setP=(v,t)=>{P.style.width=(v*100).toFixed(1)+'%';if(t)$('workt').textContent=t};
   setP(0,'Préparation…');await Promise.all(shots.map(s=>s.p));
   const n=shots.length;lon0=Math.atan2(shots[0].f[0],shots[0].f[1]);
-  const cams=shots.map(s=>({r:s.r,u:s.u,f:s.f,fp:(Math.max(s.w,s.h)/2)/Math.tan(S.fov/2*D)}));
+  const rc=shots.map(s=>({r:s.r.slice(),u:s.u.slice(),f:s.f.slice()}));
+  const fovFound=await refine(rc,setP);
+  if(S.autoFov!==false&&Math.abs(fovFound-S.fov)>.01){S.fov=Math.round(fovFound*2)/2;syncFov();saveS()}
+  const cams=rc.map((c,i)=>({r:c.r,u:c.u,f:c.f,fp:(Math.max(shots[i].w,shots[i].h)/2)/Math.tan(fovFound/2*D)}));
   const LW=256,LH=128,lows=[];
   for(let i=0;i<n;i++){
     const img=await decode(shots[i].blob),L=new Float32Array(LW*LH).fill(-1);
     splat(cams[i],img,LW,LH,(o,wg,r,g,b)=>{if(wg>.03)L[o]=.299*r+.587*g+.114*b});
-    lows.push(L);setP(.15*(i+1)/n,'Égalisation de l’exposition…');await tick();
+    lows.push(L);setP(.2+.1*(i+1)/n,'Égalisation de l’exposition…');await tick();
   }
   const gains=solveGains(lows,n);lows.length=0;
   let W=4096,H=2048,acc;
@@ -418,14 +479,14 @@ async function stitch(){
   for(let i=0;i<n;i++){
     const img=await decode(shots[i].blob),g=gains[i];
     splat(cams[i],img,W,H,(o,wg,r,gg,b)=>{const w2=wg*wg+1e-6,q=o*4;acc[q]+=w2*r*g;acc[q+1]+=w2*gg*g;acc[q+2]+=w2*b*g;acc[q+3]+=w2});
-    setP(.15+.8*(i+1)/n,`Assemblage ${i+1} / ${n}…`);await tick();
+    setP(.3+.68*(i+1)/n,`Assemblage ${i+1} / ${n}…`);await tick();
   }
   const c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');
   const out=x.createImageData(W,H),od=out.data;
   for(let o=0,q=0;o<W*H;o++,q+=4){const w=acc[q+3];
     if(w>0){od[q]=acc[q]/w;od[q+1]=acc[q+1]/w;od[q+2]=acc[q+2]/w}else{od[q]=34;od[q+1]=38;od[q+2]=44}od[q+3]=255}
   acc=null;x.putImageData(out,0,0);pano=c;setP(1,'Terminé');
-  openViewer();
+  openViewer();if(S.autoFov!==false)toast('Champ de vision calibré : '+S.fov+'°');
 }
 
 /* ---------- visionneuse ---------- */
@@ -477,8 +538,8 @@ glc.style.touchAction='none';
 
 let tt=0;function toast(m){const t=$('toast');t.textContent=m;t.style.display='block';clearTimeout(tt);tt=setTimeout(()=>t.style.display='none',3500)}
 $('gyro').onclick=()=>{gyro=!gyro;$('gyro').classList.toggle('go',gyro);if(gyro&&!ori)toast('Gyroscope indisponible')};
-$('tune').onclick=()=>{fov2.value=S.fov;$('fov2v').textContent=S.fov+'°';$('panel').classList.toggle('on')};
-$('restitch').onclick=async()=>{S.fov=+fov2.value;syncFov();saveS();$('panel').classList.remove('on');await stitch()};
+$('tune').onclick=()=>{$('auto').checked=S.autoFov!==false;fov2.value=S.fov;$('fov2v').textContent=S.fov+'°';$('panel').classList.toggle('on')};
+$('restitch').onclick=async()=>{S.autoFov=$('auto').checked;S.fov=+fov2.value;syncFov();saveS();$('panel').classList.remove('on');await stitch()};
 $('again').onclick=()=>{pano=null;shots=[];show('home')};
 
 async function panoFile(){
