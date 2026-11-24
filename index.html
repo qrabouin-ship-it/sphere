@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f1216">
+<title>Sphère</title>
+<style>
+/* VOICE: outil photo calme, nocturne, précis
+   IDEA: le viseur d'un appareil photo
+   PICTURE: un globe en fil de fer ponctué des points à viser
+   COLOUR and TYPE: anthracite, blanc, bleu visée, vert validé ; système
+   LAYOUT: plein écran, une colonne, commandes en bas à portée de pouce */
+:root{--bg:#0f1216;--panel:#1a1f26;--ink:#f2f4f7;--mute:#9aa3ad;--acc:#4f8cff;--ok:#3ddc97}
+*{box-sizing:border-box;margin:0;min-width:0}
+html,body{height:100%;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+body{overflow:hidden}
+.scr{position:fixed;inset:0;display:none}
+.scr.on{display:block}
+button{font:inherit;color:inherit;border:0;border-radius:999px;min-height:44px;padding:0 18px;background:var(--panel);cursor:pointer}
+button.main{background:var(--acc);color:#fff;font-weight:600;min-height:54px;width:100%;font-size:18px}
+button:disabled{opacity:.4}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+#home{overflow-y:auto;padding:max(20px,env(safe-area-inset-top)) 20px max(24px,env(safe-area-inset-bottom))}
+.wrap{max-width:520px;margin:0 auto;display:grid;gap:22px}
+#globe{width:100%;max-width:340px;margin:8px auto 0;display:block}
+h1{font-size:40px;line-height:1.05;letter-spacing:-.02em}
+.lead{color:var(--mute);margin-top:6px}
+ol{padding-left:22px;display:grid;gap:8px}
+details{background:var(--panel);border-radius:16px;padding:14px 16px}
+summary{cursor:pointer;font-weight:600}
+.row{display:grid;gap:6px;margin-top:14px}
+.row small{color:var(--mute);font-size:13px}
+input[type=range]{width:100%;accent-color:var(--acc);height:32px}
+select{font:16px system-ui;background:var(--bg);color:var(--ink);border:1px solid #333b45;border-radius:10px;min-height:44px;padding:0 10px}
+label.ck{display:flex;gap:10px;align-items:center;min-height:44px}
+label.ck input{width:22px;height:22px;accent-color:var(--acc)}
+.warn{background:#3a1d1d;color:#ffd0d0;border-radius:12px;padding:12px 14px;display:none}
+.warn.on{display:block}
+#video,#ov,#gl{position:absolute;inset:0;width:100%;height:100%}
+#video{object-fit:cover;background:#000}
+.bar{position:absolute;left:0;right:0;display:flex;gap:10px;align-items:center;justify-content:space-between;padding:12px 14px}
+.top{top:0;padding-top:max(12px,env(safe-area-inset-top))}
+.bot{bottom:0;padding-bottom:max(14px,env(safe-area-inset-bottom));flex-wrap:wrap;justify-content:center}
+.pill{background:rgba(0,0,0,.55);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:999px;padding:8px 14px;font-variant-numeric:tabular-nums}
+.bar button{background:rgba(0,0,0,.55);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.bar button.go{background:var(--acc)}
+#hint{position:absolute;left:16px;right:16px;bottom:calc(max(14px,env(safe-area-inset-bottom)) + 64px);text-align:center;pointer-events:none}
+#hint span{background:rgba(0,0,0,.55);border-radius:12px;padding:6px 12px;display:inline-block}
+#flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .35s}
+#land{position:absolute;inset:0;background:rgba(15,18,22,.92);display:none;place-items:center;text-align:center;padding:30px;font-size:20px}
+#work{display:none;place-items:center}
+#work.on{display:grid}
+.box{width:min(420px,86vw);text-align:center;display:grid;gap:14px}
+.track{height:8px;background:var(--panel);border-radius:8px;overflow:hidden}
+#prog{height:100%;width:0;background:var(--acc);transition:width .2s}
+#panel{position:absolute;left:12px;right:12px;bottom:calc(max(14px,env(safe-area-inset-bottom)) + 70px);background:rgba(20,24,30,.94);border-radius:16px;padding:14px 16px;display:none;max-width:520px;margin:0 auto}
+#panel.on{display:block}
+#toast{position:absolute;left:50%;top:max(70px,calc(env(safe-area-inset-top) + 60px));transform:translateX(-50%);background:rgba(0,0,0,.75);border-radius:12px;padding:8px 14px;display:none;max-width:90vw;text-align:center}
+@media (prefers-reduced-motion:reduce){#flash{transition:none}}
+</style>
+</head>
+<body>
+
+<section id="home" class="scr on">
+  <div class="wrap">
+    <svg id="globe" viewBox="0 0 340 300" aria-hidden="true"></svg>
+    <div>
+      <h1>Sphère</h1>
+      <p class="lead">Photos à 360° : tourne sur toi-même, vise les points, l'appli assemble tout en sphère.</p>
+    </div>
+    <div id="warn" class="warn"></div>
+    <ol>
+      <li>Tiens le téléphone <b>à la verticale</b>, à hauteur des yeux.</li>
+      <li>Place le cercle central sur un point bleu et ne bouge plus : la photo se prend toute seule.</li>
+      <li>Fais pivoter le téléphone <b>autour de l'objectif</b> (pas autour de toi) pour des raccords propres.</li>
+      <li>Appuie sur <b>Terminer</b> quand tu veux : les zones manquantes restent grises.</li>
+    </ol>
+    <details>
+      <summary>Réglages</summary>
+      <div class="row">
+        <span>Champ de vision de la caméra : <b id="fovv"></b></span>
+        <input id="fov" type="range" min="45" max="90" step="1">
+        <small>Si les raccords sont décalés ou les objets répétés, ajuste cette valeur. Tu peux aussi la changer après coup et réassembler.</small>
+      </div>
+      <div class="row">
+        <span>Nombre de photos</span>
+        <select id="dens">
+          <option value="rapide">Rapide (moins de photos)</option>
+          <option value="normal">Normal</option>
+          <option value="precis">Précis (plus de recouvrement)</option>
+        </select>
+      </div>
+      <label class="ck"><input id="lock" type="checkbox"> Bloquer l'exposition après la 1ʳᵉ photo</label>
+    </details>
+    <button id="start" class="main">Commencer</button>
+  </div>
+</section>
+
+<section id="cam" class="scr">
+  <video id="video" playsinline muted autoplay></video>
+  <canvas id="ov"></canvas>
+  <div id="flash"></div>
+  <div class="bar top">
+    <button id="quit">Quitter</button>
+    <span class="pill" id="count">0</span>
+    <button id="undo" disabled>Annuler</button>
+  </div>
+  <div id="hint"><span id="hintt">En attente des capteurs…</span></div>
+  <div class="bar bot"><button id="finish" class="go" disabled>Terminer</button></div>
+  <div id="land">Remets le téléphone à la verticale (mode portrait).</div>
+</section>
+
+<section id="work" class="scr">
+  <div class="box">
+    <b id="workt">Assemblage…</b>
+    <div class="track"><div id="prog"></div></div>
+    <small id="works" style="color:var(--mute)">Garde l'écran allumé.</small>
+  </div>
+</section>
+
+<section id="view" class="scr">
+  <canvas id="gl"></canvas>
+  <div id="toast"></div>
+  <div id="panel">
+    <div>Champ de vision : <b id="fov2v"></b></div>
+    <input id="fov2" type="range" min="45" max="90" step="1">
+    <small style="color:var(--mute)">Augmente si les objets apparaissent en double, diminue s'il manque des bouts entre deux photos.</small>
+    <div style="margin-top:10px"><button id="restitch" class="main">Réassembler</button></div>
+  </div>
+  <div class="bar bot">
+    <button id="gyro">Gyroscope</button>
+    <button id="save" class="go">Enregistrer</button>
+    <button id="share">Partager</button>
+    <button id="tune">Ajuster</button>
+    <button id="again">Nouvelle</button>
+  </div>
+</section>
+
+<script>
+{
+const $=id=>document.getElementById(id);
+const D=Math.PI/180, CAPL=1280;
+const S={fov:67,density:'normal',lock:true};
+try{Object.assign(S,JSON.parse(localStorage.getItem('sphere-set')||'{}'))}catch(e){}
+const saveS=()=>{try{localStorage.setItem('sphere-set',JSON.stringify(S))}catch(e){}};
+
+/* ---------- accueil ---------- */
+(function globe(){
+  const cx=170,cy=150,R=118;let s='';
+  s+=`<circle cx="${cx}" cy="${cy}" r="${R}" fill="#151a21" stroke="#2c343f"/>`;
+  for(const lat of [-60,-30,0,30,60]){const ry=R*Math.cos(lat*D),y=cy-R*Math.sin(lat*D);s+=`<ellipse cx="${cx}" cy="${y}" rx="${ry}" ry="${ry*.28}" fill="none" stroke="#2c343f"/>`}
+  for(const lo of [0,30,60,90,120,150]){s+=`<ellipse cx="${cx}" cy="${cy}" rx="${Math.abs(R*Math.sin(lo*D))}" ry="${R}" fill="none" stroke="#2c343f"/>`}
+  const pts=[[0,-40],[0,0],[0,40],[0,80],[45,-20],[45,25],[45,70],[-45,-20],[-45,25],[-45,70],[78,10],[-78,10]];
+  pts.forEach(([la,lo],i)=>{const x=cx+R*Math.cos(la*D)*Math.sin(lo*D),y=cy-R*Math.sin(la*D)+R*Math.cos(la*D)*Math.cos(lo*D)*.28*Math.sign(la||1)*0;
+    const done=i<5;s+=`<circle cx="${x}" cy="${y}" r="${done?6:8}" fill="${done?'#3ddc97':'none'}" stroke="${done?'none':'#4f8cff'}" stroke-width="3"/>`});
+  s+=`<circle cx="${cx}" cy="${cy}" r="26" fill="none" stroke="#fff" stroke-width="3"/>`;
+  $('globe').innerHTML=s;
+})();
+const fovI=$('fov'),fov2=$('fov2');
+const syncFov=()=>{fovI.value=fov2.value=S.fov;$('fovv').textContent=$('fov2v').textContent=S.fov+'°'};
+syncFov();$('dens').value=S.density;$('lock').checked=S.lock;
+fovI.oninput=()=>{S.fov=+fovI.value;syncFov();saveS()};
+fov2.oninput=()=>{$('fov2v').textContent=fov2.value+'°'};
+$('dens').onchange=e=>{S.density=e.target.value;saveS()};
+$('lock').onchange=e=>{S.lock=e.target.checked;saveS()};
+if(!window.isSecureContext){const w=$('warn');w.textContent="Cette page doit être ouverte en https:// (ou depuis un hébergement en ligne) pour accéder à la caméra.";w.classList.add('on')}
+
+const show=id=>{for(const s of document.querySelectorAll('.scr'))s.classList.toggle('on',s.id===id);mode=id};
+let mode='home';
+
+/* ---------- orientation ---------- */
+let ori=null;
+function onOri(e){
+  if(e.alpha==null)return;
+  const a=e.alpha*D,b=e.beta*D,g=(e.gamma||0)*D;
+  const ca=Math.cos(a),sa=Math.sin(a),cb=Math.cos(b),sb=Math.sin(b),cg=Math.cos(g),sg=Math.sin(g);
+  const r00=ca*cg-sa*sb*sg,r01=-sa*cb,r02=ca*sg+sa*sb*cg;
+  const r10=sa*cg+ca*sb*sg,r11=ca*cb,r12=sa*sg-ca*sb*cg;
+  const r20=-cb*sg,r21=sb,r22=cb*cg;
+  ori={r:[r00,r10,r20],u:[r01,r11,r21],f:[-r02,-r12,-r22]};
+}
+window.addEventListener('deviceorientation',onOri);
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+
+/* ---------- capture ---------- */
+const video=$('video'),ov=$('ov'),oc=ov.getContext('2d');
+let stream=null,track=null,shots=[],targets=[],rows=[],wake=null,locked=false;
+
+function makeTargets(vw,vh){
+  const L=Math.max(vw,vh),Sh=Math.min(vw,vh),V=S.fov;
+  const H=2*Math.atan(Math.tan(V/2*D)*Sh/L)/D;
+  const ov={rapide:.85,normal:.72,precis:.6}[S.density]||.72;
+  const p1=Math.min(45,V*.68),p2=Math.min(80,Math.max(p1+V*.5,90-V*.35));
+  rows=[0,p1,p2,-p1,-p2];
+  const y0=Math.atan2(ori.f[0],ori.f[1])/D;
+  targets=[];
+  rows.forEach((p,ri)=>{
+    const lc=Math.max(0,Math.abs(p)-V*.3);
+    const n=Math.max(3,Math.ceil(360*Math.cos(lc*D)/(H*ov)));
+    for(let k=0;k<n;k++){
+      const y=(y0+k*360/n)*D,pp=p*D;
+      targets.push({row:ri,d:[Math.cos(pp)*Math.sin(y),Math.cos(pp)*Math.cos(y),Math.sin(pp)],done:false});
+    }
+  });
+}
+
+async function startCam(){
+  try{if(typeof DeviceOrientationEvent!=='undefined'&&DeviceOrientationEvent.requestPermission)await DeviceOrientationEvent.requestPermission()}catch(e){}
+  try{await document.documentElement.requestFullscreen();await screen.orientation.lock('portrait')}catch(e){}
+  try{wake=await navigator.wakeLock.request('screen')}catch(e){}
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1440}}});
+  }catch(e){
+    const w=$('warn');w.textContent="Impossible d'ouvrir la caméra ("+(e.name||'erreur')+"). Vérifie l'autorisation dans Chrome et que la page est en https://.";w.classList.add('on');return;
+  }
+  track=stream.getVideoTracks()[0];locked=false;
+  video.srcObject=stream;await video.play().catch(()=>{});
+  shots=[];targets=[];updCount();show('cam');resize();
+  requestAnimationFrame(frame);
+}
+$('start').onclick=startCam;
+
+function stopCam(){if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;try{document.exitFullscreen()}catch(e){}}
+
+function resize(){
+  const dpr=Math.min(2,devicePixelRatio||1);
+  for(const c of [ov,$('gl')]){c.width=innerWidth*dpr;c.height=innerHeight*dpr}
+}
+addEventListener('resize',resize);
+
+let prevF=null,prevT=0,speed=99,hold=0,cool=0,quitArm=0;
+function camProj(W,H){
+  const vw=video.videoWidth||W,vh=video.videoHeight||H;
+  const fp=(Math.max(vw,vh)/2)/Math.tan(S.fov/2*D);
+  const sc=Math.max(W/vw,H/vh);return fp*sc;
+}
+function proj(d,o,fd,W,H){
+  const z=dot(d,o.f);if(z<=.02)return null;
+  return [W/2+fd*dot(d,o.r)/z,H/2-fd*dot(d,o.u)/z];
+}
+function shotBorder(sh){
+  const pts=[],fp=(Math.max(sh.w,sh.h)/2)/Math.tan(S.fov/2*D),N=10;
+  const edge=(px,py)=>{const x=(px-sh.w/2)/fp,y=-(py-sh.h/2)/fp;const d=[0,1,2].map(i=>sh.r[i]*x+sh.u[i]*y+sh.f[i]);const l=Math.hypot(...d);pts.push(d.map(v=>v/l))};
+  for(let i=0;i<N;i++)edge(sh.w*i/N,0);for(let i=0;i<N;i++)edge(sh.w,sh.h*i/N);
+  for(let i=N;i>0;i--)edge(sh.w*i/N,sh.h);for(let i=N;i>0;i--)edge(0,sh.h*i/N);
+  return pts;
+}
+function nextTarget(o){
+  for(let ri=0;ri<rows.length;ri++){
+    let best=null,bd=-2;
+    for(const t of targets)if(t.row===ri&&!t.done){const v=dot(t.d,o.f);if(v>bd){bd=v;best=t}}
+    if(best)return best;
+  }
+  return null;
+}
+function frame(t){
+  if(mode!=='cam')return;
+  requestAnimationFrame(frame);
+  const W=ov.width,H=ov.height,dpr=W/innerWidth;
+  oc.clearRect(0,0,W,H);
+  $('land').style.display=innerWidth>innerHeight?'grid':'none';
+  if(!ori||!video.videoWidth){$('hintt').textContent=ori?'Ouverture de la caméra…':'En attente des capteurs… (gyroscope requis)';return}
+  if(!targets.length)makeTargets(video.videoWidth,video.videoHeight);
+  const o=ori,fd=camProj(W,H);
+  const dt=Math.max(1,t-prevT);
+  if(prevF){const ang=Math.acos(Math.min(1,dot(prevF,o.f)))/D;speed=speed*.7+(ang/dt*1000)*.3}
+  prevF=o.f.slice();prevT=t;
+  // zones déjà photographiées
+  oc.lineWidth=2*dpr;
+  for(const s of shots){
+    const ps=s.border.map(d=>proj(d,o,fd,W,H));if(ps.some(p=>!p))continue;
+    oc.beginPath();ps.forEach((p,i)=>i?oc.lineTo(p[0],p[1]):oc.moveTo(p[0],p[1]));oc.closePath();
+    oc.fillStyle='rgba(61,220,151,.16)';oc.fill();oc.strokeStyle='rgba(61,220,151,.55)';oc.stroke();
+  }
+  const nt=nextTarget(o);
+  // cible la plus proche
+  let cand=null,cd=-2;for(const tg of targets)if(!tg.done){const v=dot(tg.d,o.f);if(v>cd){cd=v;cand=tg}}
+  const cang=cand?Math.acos(Math.min(1,cd))/D:99;
+  for(const tg of targets){
+    if(tg.done)continue;const p=proj(tg.d,o,fd,W,H);if(!p)continue;
+    const isN=tg===nt;oc.beginPath();oc.arc(p[0],p[1],(isN?13:9)*dpr,0,7);
+    if(isN){oc.fillStyle='#4f8cff';oc.fill();oc.strokeStyle='#fff';oc.lineWidth=2*dpr;oc.stroke()}
+    else{oc.strokeStyle='rgba(255,255,255,.8)';oc.lineWidth=2.5*dpr;oc.stroke()}
+  }
+  // flèche vers la prochaine cible si hors écran
+  if(nt){const p=proj(nt.d,o,fd,W,H);
+    if(!p||p[0]<0||p[0]>W||p[1]<0||p[1]>H){
+      let x=dot(nt.d,o.r),y=-dot(nt.d,o.u);const l=Math.hypot(x,y)||1;x/=l;y/=l;
+      const rr=Math.min(W,H)*.32,ax=W/2+x*rr,ay=H/2+y*rr,an=Math.atan2(y,x);
+      oc.save();oc.translate(ax,ay);oc.rotate(an);oc.beginPath();oc.moveTo(18*dpr,0);oc.lineTo(-10*dpr,-13*dpr);oc.lineTo(-10*dpr,13*dpr);oc.closePath();oc.fillStyle='#4f8cff';oc.fill();oc.restore();
+    }}
+  // réticule + déclenchement
+  const ok=cand&&cang<3&&speed<6&&t>cool;
+  hold=ok?hold+dt:0;
+  oc.beginPath();oc.arc(W/2,H/2,30*dpr,0,7);oc.strokeStyle=cang<3?'#4f8cff':'#fff';oc.lineWidth=3*dpr;oc.stroke();
+  if(hold>0){oc.beginPath();oc.arc(W/2,H/2,30*dpr,-Math.PI/2,-Math.PI/2+Math.min(1,hold/400)*Math.PI*2);oc.strokeStyle='#3ddc97';oc.lineWidth=6*dpr;oc.stroke()}
+  if(hold>=400){capture(cand,o);hold=0;cool=t+700}
+  const left=targets.filter(x=>!x.done).length;
+  $('hintt').textContent=!left?'Sphère complète ! Appuie sur Terminer.':cang<3?(speed<6?'Ne bouge plus…':'Stabilise le téléphone'):cang<12?'Centre le point dans le cercle':'Suis la flèche bleue';
+}
+function capture(tg,o){
+  const vw=video.videoWidth,vh=video.videoHeight,k=Math.min(1,CAPL/Math.max(vw,vh));
+  const c=document.createElement('canvas');c.width=Math.round(vw*k);c.height=Math.round(vh*k);
+  c.getContext('2d').drawImage(video,0,0,c.width,c.height);
+  const sh={tg,r:o.r.slice(),u:o.u.slice(),f:o.f.slice(),w:c.width,h:c.height,blob:null};
+  sh.p=new Promise(res=>c.toBlob(b=>{sh.blob=b;res()},'image/jpeg',.9));
+  sh.border=shotBorder(sh);
+  shots.push(sh);tg.done=true;updCount();
+  const fl=$('flash');fl.style.transition='none';fl.style.opacity=.7;requestAnimationFrame(()=>{fl.style.transition='';fl.style.opacity=0});
+  try{navigator.vibrate&&navigator.vibrate(25)}catch(e){}
+  if(S.lock&&!locked&&track){locked=true;lockExposure()}
+}
+async function lockExposure(){
+  try{const st=track.getSettings(),c=track.getCapabilities?track.getCapabilities():{};
+    if(c.exposureMode&&c.exposureMode.includes('manual')){const adv={exposureMode:'manual'};if(st.exposureTime)adv.exposureTime=st.exposureTime;if(st.iso)adv.iso=st.iso;await track.applyConstraints({advanced:[adv]})}
+  }catch(e){}
+  try{const st=track.getSettings(),c=track.getCapabilities?track.getCapabilities():{};
+    if(c.whiteBalanceMode&&c.whiteBalanceMode.includes('manual')){const adv={whiteBalanceMode:'manual'};if(st.colorTemperature)adv.colorTemperature=st.colorTemperature;await track.applyConstraints({advanced:[adv]})}
+  }catch(e){}
+}
+function updCount(){
+  $('count').textContent=shots.length+' / '+(targets.length||'…')+' photos';
+  $('undo').disabled=!shots.length;$('finish').disabled=shots.length<2;
+}
+$('undo').onclick=()=>{const s=shots.pop();if(s)s.tg.done=false;updCount()};
+$('quit').onclick=()=>{
+  if(shots.length&&Date.now()>quitArm){quitArm=Date.now()+3000;$('hintt').textContent='Appuie encore sur Quitter pour abandonner les photos';return}
+  stopCam();show('home');
+};
+$('finish').onclick=async()=>{stopCam();await stitch()};
+
+/* ---------- assemblage ---------- */
+let pano=null,lon0=0;
+const tick=()=>new Promise(r=>setTimeout(r,0));
+async function decode(blob){
+  const bm=await createImageBitmap(blob);
+  const c=document.createElement('canvas');c.width=bm.width;c.height=bm.height;
+  const x=c.getContext('2d',{willReadFrequently:true});x.drawImage(bm,0,0);bm.close&&bm.close();
+  return x.getImageData(0,0,c.width,c.height);
+}
+const trig={};
+function tables(W){
+  if(trig.W===W&&trig.l0===lon0)return trig;
+  trig.W=W;trig.l0=lon0;trig.s=new Float32Array(W);trig.c=new Float32Array(W);
+  for(let x=0;x<W;x++){const lon=(x+.5)/W*2*Math.PI-Math.PI+lon0;trig.s[x]=Math.sin(lon);trig.c[x]=Math.cos(lon)}
+  return trig;
+}
+const wrap=a=>{while(a>Math.PI)a-=2*Math.PI;while(a<=-Math.PI)a+=2*Math.PI;return a};
+function splat(c,img,W,H,cb){
+  const {r,u,f,fp}=c,w=img.width,h=img.height,cx=w/2,cy=h/2,data=img.data,T=tables(W);
+  const lc=Math.atan2(f[0],f[1]);
+  let latMin=9,latMax=-9,dMin=9,dMax=-9;
+  for(let i=0;i<=24;i++){const t=i/24;
+    for(const [px,py] of [[t*w,0],[t*w,h],[0,t*h],[w,t*h]]){
+      const x=(px-cx)/fp,y=-(py-cy)/fp;
+      const dx=r[0]*x+u[0]*y+f[0],dy=r[1]*x+u[1]*y+f[1],dz=r[2]*x+u[2]*y+f[2];
+      const lat=Math.asin(dz/Math.hypot(dx,dy,dz)),dl=wrap(Math.atan2(dx,dy)-lc);
+      latMin=Math.min(latMin,lat);latMax=Math.max(latMax,lat);dMin=Math.min(dMin,dl);dMax=Math.max(dMax,dl);
+    }}
+  const pole=z=>{const zc=f[2]*z;if(zc<=0)return false;const px=cx+fp*r[2]*z/zc,py=cy-fp*u[2]*z/zc;return px>=0&&px<=w&&py>=0&&py<=h};
+  const np=pole(1),sp=pole(-1);if(np)latMax=Math.PI/2;if(sp)latMin=-Math.PI/2;
+  const y0=Math.max(0,Math.floor((Math.PI/2-latMax)/Math.PI*H)-1),y1=Math.min(H-1,Math.ceil((Math.PI/2-latMin)/Math.PI*H)+1);
+  let xs=0,nx=W;
+  if(!np&&!sp){const a=wrap(lc-lon0)+dMin;xs=Math.floor((a+Math.PI)/(2*Math.PI)*W)-2;nx=Math.min(W,Math.ceil((dMax-dMin)/(2*Math.PI)*W)+5)}
+  const hw=w/2,hh=h/2,w4=w*4;
+  for(let y=y0;y<=y1;y++){
+    const lat=Math.PI/2-(y+.5)/H*Math.PI,cl=Math.cos(lat),sl=Math.sin(lat);
+    const fz=f[2]*sl,rz=r[2]*sl,uz=u[2]*sl,row=y*W;
+    for(let k=0;k<nx;k++){
+      let x=xs+k;x=((x%W)+W)%W;
+      const dx=cl*T.s[x],dy=cl*T.c[x];
+      const zc=dx*f[0]+dy*f[1]+fz;if(zc<=.05)continue;
+      const px=cx+fp*(dx*r[0]+dy*r[1]+rz)/zc-.5,py=cy-fp*(dx*u[0]+dy*u[1]+uz)/zc-.5;
+      if(px<0||py<0||px>=w-1||py>=h-1)continue;
+      const ex=Math.min(px,w-1-px)/hw,ey=Math.min(py,h-1-py)/hh,wg=ex*ey;
+      const ix=px|0,iy=py|0,fx=px-ix,fy=py-iy,i0=(iy*w+ix)*4,i1=i0+w4;
+      const A=(1-fx)*(1-fy),B=fx*(1-fy),C=(1-fx)*fy,E=fx*fy;
+      cb(row+x,wg,
+        data[i0]*A+data[i0+4]*B+data[i1]*C+data[i1+4]*E,
+        data[i0+1]*A+data[i0+5]*B+data[i1+1]*C+data[i1+5]*E,
+        data[i0+2]*A+data[i0+6]*B+data[i1+2]*C+data[i1+6]*E);
+    }
+  }
+}
+function solveGains(lows,n){
+  const N=[],I=[];for(let i=0;i<n;i++){N.push(new Float64Array(n));I.push(new Float64Array(n))}
+  for(let i=0;i<n;i++)for(let j=i;j<n;j++){
+    const a=lows[i],b=lows[j];let si=0,sj=0,c=0;
+    for(let o=0;o<a.length;o++)if(a[o]>=0&&b[o]>=0){si+=a[o];sj+=b[o];c++}
+    N[i][j]=N[j][i]=c;if(c){I[i][j]=si/c;I[j][i]=sj/c}
+  }
+  const al=.01,be=100,A=[],bv=new Float64Array(n);
+  for(let i=0;i<n;i++)A.push(new Float64Array(n));
+  for(let i=0;i<n;i++)for(let j=0;j<n;j++){
+    A[i][i]+=be*N[i][j];bv[i]+=be*N[i][j];if(i===j)continue;
+    A[i][i]+=2*al*I[i][j]*I[i][j]*N[i][j];A[i][j]-=2*al*I[i][j]*I[j][i]*N[i][j];
+  }
+  for(let c=0;c<n;c++){let p=c;for(let r=c+1;r<n;r++)if(Math.abs(A[r][c])>Math.abs(A[p][c]))p=r;
+    [A[c],A[p]]=[A[p],A[c]];[bv[c],bv[p]]=[bv[p],bv[c]];const d=A[c][c]||1e-9;
+    for(let r=0;r<n;r++){if(r===c)continue;const m=A[r][c]/d;if(!m)continue;for(let k=c;k<n;k++)A[r][k]-=m*A[c][k];bv[r]-=m*bv[c]}}
+  return Array.from({length:n},(_,i)=>{const g=bv[i]/(A[i][i]||1);return isFinite(g)?Math.min(2,Math.max(.5,g)):1});
+}
+async function stitch(){
+  show('work');const P=$('prog'),setP=(v,t)=>{P.style.width=(v*100).toFixed(1)+'%';if(t)$('workt').textContent=t};
+  setP(0,'Préparation…');await Promise.all(shots.map(s=>s.p));
+  const n=shots.length;lon0=Math.atan2(shots[0].f[0],shots[0].f[1]);
+  const cams=shots.map(s=>({r:s.r,u:s.u,f:s.f,fp:(Math.max(s.w,s.h)/2)/Math.tan(S.fov/2*D)}));
+  const LW=256,LH=128,lows=[];
+  for(let i=0;i<n;i++){
+    const img=await decode(shots[i].blob),L=new Float32Array(LW*LH).fill(-1);
+    splat(cams[i],img,LW,LH,(o,wg,r,g,b)=>{if(wg>.03)L[o]=.299*r+.587*g+.114*b});
+    lows.push(L);setP(.15*(i+1)/n,'Égalisation de l’exposition…');await tick();
+  }
+  const gains=solveGains(lows,n);lows.length=0;
+  let W=4096,H=2048,acc;
+  try{acc=new Float32Array(W*H*4)}catch(e){W=2048;H=1024;acc=new Float32Array(W*H*4)}
+  for(let i=0;i<n;i++){
+    const img=await decode(shots[i].blob),g=gains[i];
+    splat(cams[i],img,W,H,(o,wg,r,gg,b)=>{const w2=wg*wg+1e-6,q=o*4;acc[q]+=w2*r*g;acc[q+1]+=w2*gg*g;acc[q+2]+=w2*b*g;acc[q+3]+=w2});
+    setP(.15+.8*(i+1)/n,`Assemblage ${i+1} / ${n}…`);await tick();
+  }
+  const c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');
+  const out=x.createImageData(W,H),od=out.data;
+  for(let o=0,q=0;o<W*H;o++,q+=4){const w=acc[q+3];
+    if(w>0){od[q]=acc[q]/w;od[q+1]=acc[q+1]/w;od[q+2]=acc[q+2]/w}else{od[q]=34;od[q+1]=38;od[q+2]=44}od[q+3]=255}
+  acc=null;x.putImageData(out,0,0);pano=c;setP(1,'Terminé');
+  openViewer();
+}
+
+/* ---------- visionneuse ---------- */
+const glc=$('gl');let gl=null,prog=null,tex=null,yaw=0,pitch=0,vfov=75,gyro=false;
+function initGL(){
+  gl=glc.getContext('webgl',{preserveDrawingBuffer:false});if(!gl)return false;
+  const sh=(t,s)=>{const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);return o};
+  prog=gl.createProgram();
+  gl.attachShader(prog,sh(gl.VERTEX_SHADER,'attribute vec2 p;varying vec2 v;void main(){v=p;gl_Position=vec4(p,0.,1.);}'));
+  gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,'precision highp float;varying vec2 v;uniform sampler2D t;uniform vec3 R,U,F;uniform vec2 k;void main(){vec3 d=normalize(R*v.x*k.x+U*v.y*k.y+F);float lon=atan(d.x,d.y);float lat=asin(clamp(d.z,-1.,1.));gl_FragColor=texture2D(t,vec2(lon/6.2831853+.5,.5-lat/3.1415927));}'));
+  gl.linkProgram(prog);gl.useProgram(prog);
+  const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+  const l=gl.getAttribLocation(prog,'p');gl.enableVertexAttribArray(l);gl.vertexAttribPointer(l,2,gl.FLOAT,false,0,0);
+  tex=gl.createTexture();return true;
+}
+function openViewer(){
+  show('view');resize();
+  if(!gl&&!initGL()){toast('WebGL indisponible : enregistre l’image pour la voir ailleurs.');return}
+  let src=pano;const mx=gl.getParameter(gl.MAX_TEXTURE_SIZE);
+  if(pano.width>mx){src=document.createElement('canvas');src.width=mx;src.height=mx/2;src.getContext('2d').drawImage(pano,0,0,mx,mx/2)}
+  gl.bindTexture(gl.TEXTURE_2D,tex);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,src);
+  for(const [p,v] of [[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]])gl.texParameteri(gl.TEXTURE_2D,p,v);
+  yaw=0;pitch=0;vfov=75;requestAnimationFrame(render);
+}
+function render(){
+  if(mode!=='view')return;requestAnimationFrame(render);
+  let R,U,F;
+  if(gyro&&ori){const c=Math.cos(lon0),s=Math.sin(lon0),K=v=>[v[0]*c-v[1]*s,v[0]*s+v[1]*c,v[2]];R=K(ori.r);U=K(ori.u);F=K(ori.f)}
+  else{const cy=Math.cos(yaw),sy=Math.sin(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch);
+    F=[cp*sy,cp*cy,sp];R=[cy,-sy,0];U=[-sy*sp,-cy*sp,cp]}
+  gl.viewport(0,0,glc.width,glc.height);
+  const t=Math.tan(vfov/2*D);
+  gl.uniform3fv(gl.getUniformLocation(prog,'R'),R);gl.uniform3fv(gl.getUniformLocation(prog,'U'),U);gl.uniform3fv(gl.getUniformLocation(prog,'F'),F);
+  gl.uniform2f(gl.getUniformLocation(prog,'k'),t*glc.width/glc.height,t);
+  gl.drawArrays(gl.TRIANGLES,0,3);
+}
+const ptrs=new Map();let pinch0=0,fov0=75;
+glc.addEventListener('pointerdown',e=>{glc.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,[e.clientX,e.clientY]);
+  if(ptrs.size===2){const [a,b]=[...ptrs.values()];pinch0=Math.hypot(a[0]-b[0],a[1]-b[1]);fov0=vfov}});
+glc.addEventListener('pointermove',e=>{if(!ptrs.has(e.pointerId))return;const p=ptrs.get(e.pointerId);
+  if(ptrs.size===1&&!gyro){const s=vfov*D/innerHeight;yaw-=(e.clientX-p[0])*s;pitch=Math.max(-89*D,Math.min(89*D,pitch+(e.clientY-p[1])*s))}
+  ptrs.set(e.pointerId,[e.clientX,e.clientY]);
+  if(ptrs.size===2){const [a,b]=[...ptrs.values()];const d=Math.hypot(a[0]-b[0],a[1]-b[1]);if(pinch0)vfov=Math.max(30,Math.min(110,fov0*pinch0/d))}});
+const up=e=>{ptrs.delete(e.pointerId);pinch0=0};
+glc.addEventListener('pointerup',up);glc.addEventListener('pointercancel',up);
+glc.addEventListener('wheel',e=>{e.preventDefault();vfov=Math.max(30,Math.min(110,vfov*(1+e.deltaY*.001)))},{passive:false});
+glc.style.touchAction='none';
+
+let tt=0;function toast(m){const t=$('toast');t.textContent=m;t.style.display='block';clearTimeout(tt);tt=setTimeout(()=>t.style.display='none',3500)}
+$('gyro').onclick=()=>{gyro=!gyro;$('gyro').classList.toggle('go',gyro);if(gyro&&!ori)toast('Gyroscope indisponible')};
+$('tune').onclick=()=>{fov2.value=S.fov;$('fov2v').textContent=S.fov+'°';$('panel').classList.toggle('on')};
+$('restitch').onclick=async()=>{S.fov=+fov2.value;syncFov();saveS();$('panel').classList.remove('on');await stitch()};
+$('again').onclick=()=>{pano=null;shots=[];show('home')};
+
+async function panoFile(){
+  const blob=await new Promise(r=>pano.toBlob(r,'image/jpeg',.92));
+  const buf=new Uint8Array(await blob.arrayBuffer()),W=pano.width,H=pano.height;
+  const xmp=`<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?><x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description rdf:about="" xmlns:GPano="http://ns.google.com/photos/1.0/panorama/" GPano:ProjectionType="equirectangular" GPano:UsePanoramaViewer="True" GPano:CroppedAreaImageWidthPixels="${W}" GPano:CroppedAreaImageHeightPixels="${H}" GPano:FullPanoWidthPixels="${W}" GPano:FullPanoHeightPixels="${H}" GPano:CroppedAreaLeftPixels="0" GPano:CroppedAreaTopPixels="0" GPano:PoseHeadingDegrees="0"/></rdf:RDF></x:xmpmeta><?xpacket end="w"?>`;
+  const body=new TextEncoder().encode('http://ns.adobe.com/xap/1.0/\0'+xmp),len=body.length+2;
+  const seg=new Uint8Array(4+body.length);seg.set([0xFF,0xE1,len>>8,len&255]);seg.set(body,4);
+  let at=2;if(buf[2]===0xFF&&buf[3]===0xE0)at=4+((buf[4]<<8)|buf[5]);
+  const out=new Uint8Array(buf.length+seg.length);out.set(buf.subarray(0,at));out.set(seg,at);out.set(buf.subarray(at),at+seg.length);
+  const d=new Date(),p=v=>String(v).padStart(2,'0');
+  return new File([out],`PANO_${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.jpg`,{type:'image/jpeg'});
+}
+$('save').onclick=async()=>{if(!pano)return;const f=await panoFile();const a=document.createElement('a');a.href=URL.createObjectURL(f);a.download=f.name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);toast('Photo enregistrée dans Téléchargements')};
+$('share').onclick=async()=>{if(!pano)return;const f=await panoFile();
+  try{if(navigator.canShare&&navigator.canShare({files:[f]}))await navigator.share({files:[f],title:'Photo sphère'});else toast('Partage indisponible : utilise Enregistrer')}catch(e){}};
+}
+</script>
+</body>
+</html>
